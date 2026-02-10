@@ -10,6 +10,10 @@ import {
   Users,
   GitBranch,
   Lock,
+  Play,
+  FileJson,
+  Wrench,
+  Github,
 } from "lucide-react";
 import { FileDropZone } from "@/components/upload/FileDropZone";
 import { SampleLoader } from "@/components/upload/SampleLoader";
@@ -22,8 +26,11 @@ const features = [
   { label: "License Risk", icon: Scale },
   { label: "Maintainer Health", icon: Users },
   { label: "Typosquatting", icon: Terminal },
-  { label: "Dependency Graph", icon: GitBranch },
-  { label: "Transitive Deps", icon: Lock },
+  { label: "Transitive Deps", icon: GitBranch },
+  { label: "CI/CD Mode", icon: Play },
+  { label: "SBOM Export", icon: FileJson },
+  { label: "Fix Suggestions", icon: Wrench },
+  { label: "GitHub Action", icon: Github },
 ];
 
 export default function Home() {
@@ -262,6 +269,33 @@ export default function Home() {
               {feature.label}
             </span>
           ))}
+        </div>
+
+        {/* CLI Section */}
+        <div
+          className="mt-16 animate-fade-slide-up"
+          style={{ animationDelay: "1.6s", opacity: 0 }}
+        >
+          <div className="border border-phosphor-dim/20 p-6 text-left max-w-xl mx-auto">
+            <div className="flex items-center gap-2 mb-4">
+              <Terminal className="h-4 w-4 text-phosphor" />
+              <span className="font-mono text-sm text-phosphor uppercase tracking-wider">CLI & CI/CD</span>
+            </div>
+            <div className="font-mono text-sm text-phosphor-dim/80 bg-black/50 p-4 border border-phosphor-dim/10 overflow-x-auto">
+              <div className="text-phosphor-dim/50 mb-2"># Run in your pipeline</div>
+              <div><span className="text-phosphor">$</span> npx depsec package.json --fail-under 70</div>
+              <div className="mt-3 text-phosphor-dim/50"># With lockfile for full analysis</div>
+              <div><span className="text-phosphor">$</span> npx depsec package.json --lock package-lock.json</div>
+              <div className="mt-3 text-phosphor-dim/50"># Export SBOM (CycloneDX)</div>
+              <div><span className="text-phosphor">$</span> npx depsec package.json --sbom</div>
+            </div>
+            <p className="mt-4 font-sans text-sm text-phosphor-dim/60">
+              Block builds with vulnerable dependencies. Export SBOMs for compliance. 
+              <a href="https://github.com/AndriGitDev/DepSec#github-action" target="_blank" rel="noopener noreferrer" className="text-phosphor hover:underline ml-1">
+                GitHub Action available →
+              </a>
+            </p>
+          </div>
         </div>
 
       </div>
