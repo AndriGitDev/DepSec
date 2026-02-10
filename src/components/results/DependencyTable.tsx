@@ -119,10 +119,10 @@ export function DependencyTable({
     <button
       type="button"
       onClick={() => toggleSort(sortKeyVal)}
-      className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-phosphor-dim hover:text-phosphor transition-colors"
+      className="flex items-center gap-1 font-mono text-xs uppercase tracking-wider text-phosphor-dim hover:text-phosphor transition-colors"
     >
       {label}
-      <ArrowUpDown className="h-3 w-3" />
+      <ArrowUpDown className="h-3.5 w-3.5" />
     </button>
   );
 
@@ -138,7 +138,7 @@ export function DependencyTable({
             placeholder="Search dependencies..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-black border border-phosphor-dim/20 pl-9 pr-4 py-2 font-mono text-xs text-phosphor placeholder:text-phosphor-dim/30 focus:border-phosphor/50 focus:outline-none transition-colors"
+            className="w-full bg-black border border-phosphor-dim/20 pl-9 pr-4 py-2.5 font-mono text-sm text-phosphor placeholder:text-phosphor-dim/30 focus:border-phosphor/50 focus:outline-none transition-colors"
           />
         </div>
 
@@ -152,7 +152,7 @@ export function DependencyTable({
                   key={filter}
                   type="button"
                   onClick={() => setDepFilter(filter)}
-                  className={`px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider border transition-colors ${
+                  className={`px-4 py-2 font-mono text-xs uppercase tracking-wider border transition-colors ${
                     depFilter === filter
                       ? "bg-phosphor/10 text-phosphor border-phosphor/30"
                       : "text-phosphor-dim border-phosphor-dim/20 hover:border-phosphor/30"
@@ -178,7 +178,7 @@ export function DependencyTable({
                   <SortHeader label="Package" sortKeyVal="name" />
                 </th>
                 <th className="px-4 py-2.5 text-left">
-                  <span className="font-mono text-[10px] uppercase tracking-wider text-phosphor-dim">
+                  <span className="font-mono text-xs uppercase tracking-wider text-phosphor-dim">
                     Version
                   </span>
                 </th>
@@ -209,7 +209,7 @@ export function DependencyTable({
                     key={row.name}
                     className="border-b border-phosphor-dim/10 hover:bg-phosphor/[0.02] transition-colors"
                   >
-                    <td className="px-4 py-2.5 font-mono text-xs text-phosphor">
+                    <td className="px-4 py-3 font-mono text-sm text-phosphor">
                       <div className="flex items-center gap-1">
                         {getDepthIndicator(row.depth)}
                         <span className={row.isDirect ? "" : "text-phosphor-dim/70"}>
@@ -217,12 +217,12 @@ export function DependencyTable({
                         </span>
                       </div>
                     </td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-phosphor-dim">
+                    <td className="px-4 py-3 font-mono text-sm text-phosphor-dim">
                       {row.version}
                     </td>
-                    <td className="px-4 py-2.5">
+                    <td className="px-4 py-3">
                       <span
-                        className={`font-mono text-[10px] uppercase px-1.5 py-0.5 border ${
+                        className={`font-mono text-xs uppercase px-2 py-1 border ${
                           row.type === "prod"
                             ? "text-phosphor border-phosphor/20"
                             : "text-phosphor-dim border-phosphor-dim/20"
@@ -232,8 +232,8 @@ export function DependencyTable({
                       </span>
                     </td>
                     {hasTransitiveDeps && (
-                      <td className="px-4 py-2.5">
-                        <span className={`font-mono text-[10px] px-1.5 py-0.5 border ${
+                      <td className="px-4 py-3">
+                        <span className={`font-mono text-xs px-2 py-1 border ${
                           row.isDirect
                             ? "text-phosphor border-phosphor/30"
                             : "text-phosphor-dim/60 border-phosphor-dim/20"
@@ -242,29 +242,29 @@ export function DependencyTable({
                         </span>
                       </td>
                     )}
-                    <td className="px-4 py-2.5">
+                    <td className="px-4 py-3">
                       {row.vulnCount > 0 ? (
                         <div className="flex flex-col gap-1">
-                          <span className={`font-mono text-[10px] uppercase px-1.5 py-0.5 border ${badge.cls}`}>
+                          <span className={`font-mono text-xs uppercase px-2 py-1 border ${badge.cls}`}>
                             {row.vulnCount} {badge.text}
                           </span>
                           {/* Show remediation hint if available */}
                           {row.vulns.some(v => v.fixedVersion) && (
-                            <span className="font-mono text-[9px] text-phosphor-dim/60">
+                            <span className="font-mono text-xs text-phosphor-dim/60">
                               Fix: upgrade to {row.vulns.find(v => v.fixedVersion)?.fixedVersion}
                             </span>
                           )}
                         </div>
                       ) : (
-                        <span className="font-mono text-[10px] text-phosphor-dim/50">
+                        <span className="font-mono text-xs text-phosphor-dim/50">
                           None
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-phosphor-dim">
+                    <td className="px-4 py-3 font-mono text-sm text-phosphor-dim">
                       {row.license}
                     </td>
-                    <td className="px-4 py-2.5 text-right font-mono text-xs text-phosphor-dim">
+                    <td className="px-4 py-3 text-right font-mono text-sm text-phosphor-dim">
                       {row.downloads.toLocaleString()}
                     </td>
                   </tr>
@@ -274,7 +274,7 @@ export function DependencyTable({
                 <tr>
                   <td
                     colSpan={hasTransitiveDeps ? 7 : 6}
-                    className="px-4 py-8 text-center font-mono text-xs text-phosphor-dim/40"
+                    className="px-4 py-8 text-center font-mono text-sm text-phosphor-dim/40"
                   >
                     No dependencies match your search.
                   </td>
@@ -285,7 +285,7 @@ export function DependencyTable({
         </div>
       </div>
 
-      <p className="mt-2 font-mono text-[10px] text-phosphor-dim/40">
+      <p className="mt-3 font-mono text-sm text-phosphor-dim/50">
         {rows.length} of {parsed.totalCount} dependencies shown
         {hasTransitiveDeps && depFilter === "all" && (
           <span> ({parsed.directCount} direct, {parsed.transitiveCount} transitive)</span>
