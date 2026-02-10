@@ -165,6 +165,15 @@ export default function Home() {
     [processFiles]
   );
 
+  // Handle sample with lockfile
+  const handleSampleWithLockfile = useCallback(
+    (packageJson: string, lockfile: string) => {
+      pendingContent.current = { packageJson, lockfile };
+      processFiles();
+    },
+    [processFiles]
+  );
+
   const isLoading = status === "parsing";
 
   return (
@@ -245,7 +254,11 @@ export default function Home() {
           className="mt-6 animate-fade-slide-up"
           style={{ animationDelay: "1.1s", opacity: 0 }}
         >
-          <SampleLoader onLoad={handleSingleFileContent} disabled={isLoading} />
+          <SampleLoader 
+            onLoad={handleSingleFileContent} 
+            onLoadWithLockfile={handleSampleWithLockfile}
+            disabled={isLoading} 
+          />
         </div>
 
         {/* Error */}
