@@ -2,11 +2,15 @@
   "name": "depsec",
   "version": "0.1.0",
   "private": true,
+  "bin": {
+    "depsec": "./scripts/cli.js"
+  },
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "cli": "node scripts/cli.js"
   },
   "dependencies": {
     "@tanstack/react-table": "^8",

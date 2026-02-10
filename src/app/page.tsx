@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import {
   Shield,
   Terminal,
@@ -9,10 +9,12 @@ import {
   Scale,
   Users,
   GitBranch,
+  Lock,
 } from "lucide-react";
 import { FileDropZone } from "@/components/upload/FileDropZone";
 import { SampleLoader } from "@/components/upload/SampleLoader";
 import { parsePackageJson } from "@/lib/parser/packageJsonParser";
+import { parseLockfile } from "@/lib/parser/lockfileParser";
 import { useAnalysisStore } from "@/store/analysisStore";
 
 const features = [
@@ -21,29 +23,139 @@ const features = [
   { label: "Maintainer Health", icon: Users },
   { label: "Typosquatting", icon: Terminal },
   { label: "Dependency Graph", icon: GitBranch },
+  { label: "Transitive Deps", icon: Lock },
 ];
 
 export default function Home() {
   const router = useRouter();
-  const { setRawJson, setParsedPackage, setStatus, setError, status, reset } =
-    useAnalysisStore();
+  const { 
+    setRawJson, 
+    setRawLockfile,
+    setParsedPackage, 
+    setParsedLockfile,
+    setStatus, 
+    setError, 
+    status, 
+    reset 
+  } = useAnalysisStore();
+
+  // Store pending file contents for multi-file upload
+  const pendingContent = useRef<{
+    packageJson?: string;
+    lockfile?: string;
+  }>({});
+
+  const processFiles = useCallback(() => {
+    const { packageJson, lockfile } = pendingContent.current;
+    
+    if (!packageJson) {
+      setError("package.json is required.");
+      return;
+    }
+
+    reset();
+    setStatus("parsing");
+    setRawJson(packageJson);
+
+    try {
+      const parsed = parsePackageJson(packageJson);
+      
+      // If we have a lockfile, parse it and enhance the dependency data
+      if (lockfile) {
+        setRawLockfile(lockfile);
+        
+        try {
+          // Parse package.json for direct deps info
+          const pkgData = JSON.parse(packageJson);
+          const lockfileParsed = parseLockfile(lockfile, {
+            dependencies: pkgData.dependencies,
+            devDependencies: pkgData.devDependencies,
+          });
+          
+          setParsedLockfile(lockfileParsed);
+          
+          // Enhance parsed package with lockfile data
+          const enhancedDeps = parsed.dependencies.map(dep => {
+            const lockDep = lockfileParsed.dependencies.find(d => d.name === dep.name);
+            return {
+              ...dep,
+              depth: lockDep?.depth ?? 0,
+              isDirect: lockDep?.isDirect ?? true,
+              resolvedVersion: lockDep?.version,
+              dependencies: lockDep?.dependencies,
+            };
+          });
+          
+          // Add transitive dependencies from lockfile
+          const directNames = new Set(parsed.dependencies.map(d => d.name));
+          const transitiveDeps = lockfileParsed.dependencies
+            .filter(d => !directNames.has(d.name))
+            .map(d => ({
+              name: d.name,
+              versionSpecifier: d.version,
+              type: d.type,
+              depth: d.depth,
+              isDirect: false,
+              resolvedVersion: d.version,
+              dependencies: d.dependencies,
+            }));
+          
+          setParsedPackage({
+            ...parsed,
+            dependencies: [...enhancedDeps, ...transitiveDeps],
+            totalCount: enhancedDeps.length + transitiveDeps.length,
+            directCount: enhancedDeps.length,
+            transitiveCount: transitiveDeps.length,
+            maxDepth: lockfileParsed.maxDepth,
+            hasLockfile: true,
+            dependencyTree: lockfileParsed.dependencyTree,
+          });
+        } catch (lockErr) {
+          console.warn("Failed to parse lockfile, continuing with package.json only:", lockErr);
+          setParsedPackage(parsed);
+        }
+      } else {
+        // No lockfile, use package.json only
+        setParsedPackage({
+          ...parsed,
+          directCount: parsed.totalCount,
+          transitiveCount: 0,
+          hasLockfile: false,
+        });
+      }
+
+      setStatus("fetching");
+      router.push("/results");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to parse file.");
+    }
+  }, [reset, setRawJson, setRawLockfile, setParsedPackage, setParsedLockfile, setStatus, setError, router]);
 
   const handleFileContent = useCallback(
-    (content: string) => {
-      reset();
-      setStatus("parsing");
-      setRawJson(content);
-
-      try {
-        const parsed = parsePackageJson(content);
-        setParsedPackage(parsed);
-        setStatus("fetching");
-        router.push("/results");
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to parse file.");
+    (content: string, filename: string) => {
+      if (filename === "package.json") {
+        pendingContent.current.packageJson = content;
+      } else if (filename === "package-lock.json") {
+        pendingContent.current.lockfile = content;
       }
+      
+      // Auto-process after a short delay to allow multiple files to be uploaded
+      setTimeout(() => {
+        if (pendingContent.current.packageJson) {
+          processFiles();
+        }
+      }, 100);
     },
-    [reset, setRawJson, setParsedPackage, setStatus, setError, router]
+    [processFiles]
+  );
+
+  // Backward compatibility: handle single file content (for sample loader)
+  const handleSingleFileContent = useCallback(
+    (content: string) => {
+      pendingContent.current = { packageJson: content };
+      processFiles();
+    },
+    [processFiles]
   );
 
   const isLoading = status === "parsing";
@@ -91,6 +203,7 @@ export default function Home() {
           <p className="font-sans text-base text-phosphor-dim max-w-md mx-auto leading-relaxed mb-8">
             Upload your package.json to analyze vulnerabilities, license risks,
             maintainer health, and get a security score from 0 to 100.
+            Include package-lock.json for transitive dependency analysis.
           </p>
         </div>
 
@@ -113,7 +226,11 @@ export default function Home() {
           className="animate-fade-slide-up-slow"
           style={{ animationDelay: "0.9s", opacity: 0 }}
         >
-          <FileDropZone onFileRead={handleFileContent} disabled={isLoading} />
+          <FileDropZone 
+            onFileRead={handleFileContent} 
+            disabled={isLoading}
+            acceptLockfile={true}
+          />
         </div>
 
         {/* Sample */}
@@ -121,7 +238,7 @@ export default function Home() {
           className="mt-6 animate-fade-slide-up"
           style={{ animationDelay: "1.1s", opacity: 0 }}
         >
-          <SampleLoader onLoad={handleFileContent} disabled={isLoading} />
+          <SampleLoader onLoad={handleSingleFileContent} disabled={isLoading} />
         </div>
 
         {/* Error */}

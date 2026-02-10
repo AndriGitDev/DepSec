@@ -1,0 +1,155 @@
+name: 'DepSec Security Scan'
+description: 'Analyze npm dependencies for vulnerabilities, license risks, and security issues'
+author: 'Andri Pétur Hafþórsson'
+
+branding:
+  icon: 'shield'
+  color: 'green'
+
+inputs:
+  package-path:
+    description: 'Path to package.json file'
+    required: false
+    default: 'package.json'
+  lock-path:
+    description: 'Path to package-lock.json file (optional, enables transitive dependency analysis)'
+    required: false
+    default: ''
+  threshold:
+    description: 'Minimum security score to pass (0-100). Action fails if score is below this.'
+    required: false
+    default: '0'
+  fail-on-vulnerability:
+    description: 'Fail if any vulnerabilities are found (true/false)'
+    required: false
+    default: 'false'
+  output-format:
+    description: 'Output format: json, sbom, or summary'
+    required: false
+    default: 'summary'
+
+outputs:
+  score:
+    description: 'Security score (0-100)'
+    value: ${{ steps.scan.outputs.score }}
+  grade:
+    description: 'Security grade (A+, A, B, C, D, F)'
+    value: ${{ steps.scan.outputs.grade }}
+  vulnerabilities-total:
+    description: 'Total number of vulnerabilities found'
+    value: ${{ steps.scan.outputs.vulnerabilities_total }}
+  vulnerabilities-critical:
+    description: 'Number of critical vulnerabilities'
+    value: ${{ steps.scan.outputs.vulnerabilities_critical }}
+  vulnerabilities-high:
+    description: 'Number of high severity vulnerabilities'
+    value: ${{ steps.scan.outputs.vulnerabilities_high }}
+  dependencies-total:
+    description: 'Total number of dependencies analyzed'
+    value: ${{ steps.scan.outputs.dependencies_total }}
+  dependencies-direct:
+    description: 'Number of direct dependencies'
+    value: ${{ steps.scan.outputs.dependencies_direct }}
+  dependencies-transitive:
+    description: 'Number of transitive dependencies'
+    value: ${{ steps.scan.outputs.dependencies_transitive }}
+  result-json:
+    description: 'Full scan results in JSON format'
+    value: ${{ steps.scan.outputs.result_json }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Run DepSec Scan
+      id: scan
+      shell: bash
+      run: |
+        # Download the CLI script
+        CLI_URL="https://raw.githubusercontent.com/AndriGitDev/DepSec/main/scripts/cli.js"
+        curl -sSL "$CLI_URL" -o /tmp/depsec-cli.js
+        
+        # Build command
+        CMD="node /tmp/depsec-cli.js --json"
+        
+        if [ -n "${{ inputs.lock-path }}" ] && [ -f "${{ inputs.lock-path }}" ]; then
+          CMD="$CMD --lock ${{ inputs.lock-path }}"
+        fi
+        
+        if [ "${{ inputs.threshold }}" != "0" ]; then
+          CMD="$CMD --fail-under ${{ inputs.threshold }}"
+        fi
+        
+        CMD="$CMD ${{ inputs.package-path }}"
+        
+        # Run scan and capture output
+        set +e
+        RESULT=$($CMD 2>&1)
+        EXIT_CODE=$?
+        set -e
+        
+        # Parse JSON result
+        SCORE=$(echo "$RESULT" | jq -r '.score // 0')
+        GRADE=$(echo "$RESULT" | jq -r '.grade // "F"')
+        VULN_TOTAL=$(echo "$RESULT" | jq -r '.vulnerabilities.total // 0')
+        VULN_CRITICAL=$(echo "$RESULT" | jq -r '.vulnerabilities.critical // 0')
+        VULN_HIGH=$(echo "$RESULT" | jq -r '.vulnerabilities.high // 0')
+        DEPS_TOTAL=$(echo "$RESULT" | jq -r '.dependencies.total // 0')
+        DEPS_DIRECT=$(echo "$RESULT" | jq -r '.dependencies.direct // 0')
+        DEPS_TRANSITIVE=$(echo "$RESULT" | jq -r '.dependencies.transitive // 0')
+        
+        # Set outputs
+        echo "score=$SCORE" >> $GITHUB_OUTPUT
+        echo "grade=$GRADE" >> $GITHUB_OUTPUT
+        echo "vulnerabilities_total=$VULN_TOTAL" >> $GITHUB_OUTPUT
+        echo "vulnerabilities_critical=$VULN_CRITICAL" >> $GITHUB_OUTPUT
+        echo "vulnerabilities_high=$VULN_HIGH" >> $GITHUB_OUTPUT
+        echo "dependencies_total=$DEPS_TOTAL" >> $GITHUB_OUTPUT
+        echo "dependencies_direct=$DEPS_DIRECT" >> $GITHUB_OUTPUT
+        echo "dependencies_transitive=$DEPS_TRANSITIVE" >> $GITHUB_OUTPUT
+        
+        # Store full JSON (escape for multiline)
+        echo "result_json<<EOF" >> $GITHUB_OUTPUT
+        echo "$RESULT" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+        
+        # Generate summary
+        echo "## 🛡️ DepSec Security Scan Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+        echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+        echo "| **Score** | $SCORE/100 ($GRADE) |" >> $GITHUB_STEP_SUMMARY
+        echo "| **Dependencies** | $DEPS_TOTAL total ($DEPS_DIRECT direct, $DEPS_TRANSITIVE transitive) |" >> $GITHUB_STEP_SUMMARY
+        echo "| **Vulnerabilities** | $VULN_TOTAL total |" >> $GITHUB_STEP_SUMMARY
+        
+        if [ "$VULN_CRITICAL" -gt 0 ]; then
+          echo "| 🔴 Critical | $VULN_CRITICAL |" >> $GITHUB_STEP_SUMMARY
+        fi
+        if [ "$VULN_HIGH" -gt 0 ]; then
+          echo "| 🟠 High | $VULN_HIGH |" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Check fail conditions
+        SHOULD_FAIL=0
+        
+        if [ "${{ inputs.threshold }}" != "0" ] && [ "$SCORE" -lt "${{ inputs.threshold }}" ]; then
+          echo "❌ Score $SCORE is below threshold ${{ inputs.threshold }}" >> $GITHUB_STEP_SUMMARY
+          SHOULD_FAIL=1
+        fi
+        
+        if [ "${{ inputs.fail-on-vulnerability }}" = "true" ] && [ "$VULN_TOTAL" -gt 0 ]; then
+          echo "❌ Vulnerabilities found (fail-on-vulnerability is enabled)" >> $GITHUB_STEP_SUMMARY
+          SHOULD_FAIL=1
+        fi
+        
+        if [ "$SHOULD_FAIL" = "1" ]; then
+          exit 1
+        fi
+        
+        echo "✅ Security scan passed" >> $GITHUB_STEP_SUMMARY

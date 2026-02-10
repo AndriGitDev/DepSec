@@ -18,6 +18,8 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
+      "scripts/**",      // CLI scripts use CommonJS
+      "src/cli/**",      // TypeScript CLI (separate build)
     ],
   },
 ];

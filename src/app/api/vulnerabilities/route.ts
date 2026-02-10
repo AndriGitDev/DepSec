@@ -11,12 +11,24 @@ const requestSchema = z.object({
   ),
 });
 
+interface OsvAffectedRange {
+  type: string;
+  events: Array<{ introduced?: string; fixed?: string; last_affected?: string }>;
+}
+
+interface OsvAffected {
+  package?: { name: string; ecosystem: string };
+  ranges?: OsvAffectedRange[];
+  versions?: string[];
+}
+
 interface OsvVuln {
   id: string;
   summary?: string;
   severity?: Array<{ type: string; score: string }>;
   aliases?: string[];
   database_specific?: { severity?: string };
+  affected?: OsvAffected[];
 }
 
 // Compute CVSS v3 base score from a vector string like "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
@@ -104,9 +116,11 @@ async function fetchVulnDetails(
   return results;
 }
 
-function classifySeverity(v: OsvVuln): { severity?: string; cvssScore?: number } {
+function classifySeverity(v: OsvVuln): { severity?: string; cvssScore?: number; fixedVersion?: string; affectedVersions?: string } {
   let severity: string | undefined;
   let cvssScore: number | undefined;
+  let fixedVersion: string | undefined;
+  let affectedVersions: string | undefined;
 
   // 1. Try parsing the CVSS v3 vector string
   if (v.severity && v.severity.length > 0) {
@@ -142,7 +156,39 @@ function classifySeverity(v: OsvVuln): { severity?: string; cvssScore?: number }
     else severity = "MEDIUM"; // default unknown vulns to MEDIUM, not LOW
   }
 
-  return { severity, cvssScore };
+  // 5. Extract fixed version from affected ranges
+  if (v.affected && v.affected.length > 0) {
+    for (const affected of v.affected) {
+      // Look for npm packages
+      if (affected.package?.ecosystem !== "npm") continue;
+      
+      if (affected.ranges) {
+        for (const range of affected.ranges) {
+          if (range.type !== "SEMVER" && range.type !== "ECOSYSTEM") continue;
+          
+          for (const event of range.events) {
+            if (event.fixed) {
+              // Take the first fixed version we find
+              if (!fixedVersion) {
+                fixedVersion = event.fixed;
+              }
+            }
+            if (event.introduced && event.introduced !== "0") {
+              // Build affected range string
+              if (!affectedVersions) {
+                affectedVersions = `>=${event.introduced}`;
+              }
+            }
+          }
+        }
+      }
+      
+      // If we found what we need, stop looking
+      if (fixedVersion) break;
+    }
+  }
+
+  return { severity, cvssScore, fixedVersion, affectedVersions };
 }
 
 export async function POST(request: Request) {
@@ -205,7 +251,7 @@ export async function POST(request: Request) {
     // Step 2: Fetch full details for all unique vuln IDs (concurrency-limited)
     const vulnDetails = await fetchVulnDetails([...allVulnIds], 15);
 
-    // Step 3: Build results with proper severity classification
+    // Step 3: Build results with proper severity classification and remediation hints
     const allResults: Record<
       string,
       Array<{
@@ -214,6 +260,12 @@ export async function POST(request: Request) {
         severity?: string;
         cvssScore?: number;
         aliases?: string[];
+        fixedVersion?: string;
+        affectedVersions?: string;
+        remediation?: {
+          fixedVersion?: string;
+          recommendation?: string;
+        };
       }>
     > = {};
 
@@ -230,13 +282,23 @@ export async function POST(request: Request) {
           return { id, severity: "MEDIUM" }; // couldn't fetch details, assume MEDIUM
         }
 
-        const { severity, cvssScore } = classifySeverity(detail);
+        const { severity, cvssScore, fixedVersion, affectedVersions } = classifySeverity(detail);
+        
+        // Build remediation hint
+        const remediation = fixedVersion ? {
+          fixedVersion,
+          recommendation: `Upgrade ${pkg.name} to version ${fixedVersion} or later to fix this vulnerability.`,
+        } : undefined;
+
         return {
           id: detail.id,
           summary: detail.summary,
           severity,
           cvssScore,
           aliases: detail.aliases,
+          fixedVersion,
+          affectedVersions,
+          remediation,
         };
       });
     }

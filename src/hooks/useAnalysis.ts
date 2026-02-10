@@ -22,6 +22,7 @@ function resolveVersion(specifier: string): string {
 export function useAnalysis() {
   const {
     parsedPackage,
+    parsedLockfile,
     status,
     setVulnerabilities,
     setPackageMetadata,
@@ -38,11 +39,24 @@ export function useAnalysis() {
     if (status !== "fetching" || !parsedPackage || hasRun.current) return;
     hasRun.current = true;
 
-    const depNames = parsedPackage.dependencies.map((d) => d.name);
+    // Build package list for vulnerability scanning
+    // If we have lockfile data, use resolved versions; otherwise use parsed specifiers
     const packages = parsedPackage.dependencies.map((d) => ({
       name: d.name,
-      version: resolveVersion(d.versionSpecifier),
+      version: d.resolvedVersion || resolveVersion(d.versionSpecifier),
+      depth: d.depth ?? 0,
+      isDirect: d.isDirect ?? true,
     }));
+
+    // Get all unique dependency names for metadata/download fetching
+    const allDepNames = parsedPackage.dependencies.map((d) => d.name);
+    
+    // Direct dependencies for higher-priority scanning
+    // (Reserved for future use in enhanced scanning)
+    const _directDepNames = parsedPackage.dependencies
+      .filter(d => d.isDirect !== false)
+      .map(d => d.name);
+    void _directDepNames; // Suppress unused warning
 
     async function run() {
       try {
@@ -54,11 +68,11 @@ export function useAnalysis() {
             console.error("Vuln fetch failed:", err);
             return {} as Record<string, never[]>;
           }),
-          fetchPackageMetadata(depNames).catch((err) => {
+          fetchPackageMetadata(allDepNames).catch((err) => {
             console.error("Metadata fetch failed:", err);
             return {} as Record<string, never>;
           }),
-          fetchDownloadCounts(depNames).catch((err) => {
+          fetchDownloadCounts(allDepNames).catch((err) => {
             console.error("Downloads fetch failed:", err);
             return {} as Record<string, number>;
           }),
@@ -76,7 +90,8 @@ export function useAnalysis() {
           parsedPackage!,
           vulnData,
           metaData,
-          dlData
+          dlData,
+          parsedLockfile
         );
 
         setScores(scores);
@@ -93,6 +108,7 @@ export function useAnalysis() {
   }, [
     status,
     parsedPackage,
+    parsedLockfile,
     setVulnerabilities,
     setPackageMetadata,
     setDownloadCounts,
@@ -107,6 +123,7 @@ export function useAnalysis() {
     progress: useAnalysisStore.getState().progress,
     scores: useAnalysisStore.getState().scores,
     parsedPackage: useAnalysisStore.getState().parsedPackage,
+    parsedLockfile: useAnalysisStore.getState().parsedLockfile,
     vulnerabilities: useAnalysisStore.getState().vulnerabilities,
     packageMetadata: useAnalysisStore.getState().packageMetadata,
     downloadCounts: useAnalysisStore.getState().downloadCounts,

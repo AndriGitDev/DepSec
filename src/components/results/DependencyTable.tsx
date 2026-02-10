@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { ArrowUpDown, Search } from "lucide-react";
+import { ArrowUpDown, Search, GitBranch, ChevronRight } from "lucide-react";
 import type {
   ParsedPackageJson,
   Vulnerability,
@@ -15,13 +15,26 @@ interface DependencyTableProps {
   downloadCounts: Record<string, number>;
 }
 
-type SortKey = "name" | "type" | "vulns" | "license" | "downloads";
+type SortKey = "name" | "type" | "vulns" | "license" | "downloads" | "depth";
 type SortDir = "asc" | "desc";
+type DepFilter = "all" | "direct" | "transitive";
 
 function getRiskBadge(vulnCount: number) {
   if (vulnCount === 0) return { text: "Clean", cls: "text-phosphor border-phosphor/30" };
   if (vulnCount <= 2) return { text: "Warning", cls: "text-warning border-warning/30" };
   return { text: "Critical", cls: "text-danger border-danger/30" };
+}
+
+function getDepthIndicator(depth: number) {
+  if (depth === 0) return null;
+  return (
+    <span className="inline-flex items-center gap-0.5 text-phosphor-dim/60">
+      {Array.from({ length: Math.min(depth, 3) }).map((_, i) => (
+        <ChevronRight key={i} className="h-2.5 w-2.5" />
+      ))}
+      {depth > 3 && <span className="text-[9px]">+{depth - 3}</span>}
+    </span>
+  );
 }
 
 export function DependencyTable({
@@ -33,22 +46,38 @@ export function DependencyTable({
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("vulns");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [depFilter, setDepFilter] = useState<DepFilter>("all");
+
+  const hasTransitiveDeps = parsed.hasLockfile && (parsed.transitiveCount ?? 0) > 0;
 
   const rows = useMemo(() => {
     let items = parsed.dependencies.map((dep) => ({
       name: dep.name,
-      version: dep.versionSpecifier,
+      version: dep.resolvedVersion || dep.versionSpecifier,
+      specifier: dep.versionSpecifier,
       type: dep.type,
+      depth: dep.depth ?? 0,
+      isDirect: dep.isDirect !== false,
       vulnCount: (vulnerabilities[dep.name] ?? []).length,
+      vulns: vulnerabilities[dep.name] ?? [],
       license: metadata[dep.name]?.license ?? "Unknown",
       downloads: downloadCounts[dep.name] ?? 0,
     }));
 
+    // Apply depth filter
+    if (depFilter === "direct") {
+      items = items.filter((i) => i.isDirect);
+    } else if (depFilter === "transitive") {
+      items = items.filter((i) => !i.isDirect);
+    }
+
+    // Apply search filter
     if (search) {
       const lower = search.toLowerCase();
       items = items.filter((i) => i.name.toLowerCase().includes(lower));
     }
 
+    // Apply sorting
     items.sort((a, b) => {
       let cmp = 0;
       switch (sortKey) {
@@ -67,12 +96,15 @@ export function DependencyTable({
         case "downloads":
           cmp = a.downloads - b.downloads;
           break;
+        case "depth":
+          cmp = a.depth - b.depth;
+          break;
       }
       return sortDir === "asc" ? cmp : -cmp;
     });
 
     return items;
-  }, [parsed, vulnerabilities, metadata, downloadCounts, search, sortKey, sortDir]);
+  }, [parsed, vulnerabilities, metadata, downloadCounts, search, sortKey, sortDir, depFilter]);
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -96,16 +128,44 @@ export function DependencyTable({
 
   return (
     <div>
-      {/* Search */}
-      <div className="relative mb-4">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-phosphor-dim/50" />
-        <input
-          type="text"
-          placeholder="Search dependencies..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full bg-black border border-phosphor-dim/20 pl-9 pr-4 py-2 font-mono text-xs text-phosphor placeholder:text-phosphor-dim/30 focus:border-phosphor/50 focus:outline-none transition-colors"
-        />
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-4 mb-4">
+        {/* Search */}
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-phosphor-dim/50" />
+          <input
+            type="text"
+            placeholder="Search dependencies..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full bg-black border border-phosphor-dim/20 pl-9 pr-4 py-2 font-mono text-xs text-phosphor placeholder:text-phosphor-dim/30 focus:border-phosphor/50 focus:outline-none transition-colors"
+          />
+        </div>
+
+        {/* Depth filter (only show if we have transitive deps) */}
+        {hasTransitiveDeps && (
+          <div className="flex items-center gap-2">
+            <GitBranch className="h-3.5 w-3.5 text-phosphor-dim/50" />
+            <div className="flex">
+              {(["all", "direct", "transitive"] as const).map((filter) => (
+                <button
+                  key={filter}
+                  type="button"
+                  onClick={() => setDepFilter(filter)}
+                  className={`px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider border transition-colors ${
+                    depFilter === filter
+                      ? "bg-phosphor/10 text-phosphor border-phosphor/30"
+                      : "text-phosphor-dim border-phosphor-dim/20 hover:border-phosphor/30"
+                  } ${filter === "all" ? "rounded-l" : ""} ${filter === "transitive" ? "rounded-r" : ""} ${filter !== "all" ? "border-l-0" : ""}`}
+                >
+                  {filter}
+                  {filter === "direct" && ` (${parsed.directCount ?? parsed.dependencies.filter(d => d.isDirect !== false).length})`}
+                  {filter === "transitive" && ` (${parsed.transitiveCount ?? 0})`}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Table */}
@@ -125,6 +185,11 @@ export function DependencyTable({
                 <th className="px-4 py-2.5 text-left">
                   <SortHeader label="Type" sortKeyVal="type" />
                 </th>
+                {hasTransitiveDeps && (
+                  <th className="px-4 py-2.5 text-left">
+                    <SortHeader label="Depth" sortKeyVal="depth" />
+                  </th>
+                )}
                 <th className="px-4 py-2.5 text-left">
                   <SortHeader label="Vulns" sortKeyVal="vulns" />
                 </th>
@@ -145,7 +210,12 @@ export function DependencyTable({
                     className="border-b border-phosphor-dim/10 hover:bg-phosphor/[0.02] transition-colors"
                   >
                     <td className="px-4 py-2.5 font-mono text-xs text-phosphor">
-                      {row.name}
+                      <div className="flex items-center gap-1">
+                        {getDepthIndicator(row.depth)}
+                        <span className={row.isDirect ? "" : "text-phosphor-dim/70"}>
+                          {row.name}
+                        </span>
+                      </div>
                     </td>
                     <td className="px-4 py-2.5 font-mono text-xs text-phosphor-dim">
                       {row.version}
@@ -161,11 +231,30 @@ export function DependencyTable({
                         {row.type}
                       </span>
                     </td>
+                    {hasTransitiveDeps && (
+                      <td className="px-4 py-2.5">
+                        <span className={`font-mono text-[10px] px-1.5 py-0.5 border ${
+                          row.isDirect
+                            ? "text-phosphor border-phosphor/30"
+                            : "text-phosphor-dim/60 border-phosphor-dim/20"
+                        }`}>
+                          {row.isDirect ? "direct" : `L${row.depth}`}
+                        </span>
+                      </td>
+                    )}
                     <td className="px-4 py-2.5">
                       {row.vulnCount > 0 ? (
-                        <span className={`font-mono text-[10px] uppercase px-1.5 py-0.5 border ${badge.cls}`}>
-                          {row.vulnCount} {badge.text}
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          <span className={`font-mono text-[10px] uppercase px-1.5 py-0.5 border ${badge.cls}`}>
+                            {row.vulnCount} {badge.text}
+                          </span>
+                          {/* Show remediation hint if available */}
+                          {row.vulns.some(v => v.fixedVersion) && (
+                            <span className="font-mono text-[9px] text-phosphor-dim/60">
+                              Fix: upgrade to {row.vulns.find(v => v.fixedVersion)?.fixedVersion}
+                            </span>
+                          )}
+                        </div>
                       ) : (
                         <span className="font-mono text-[10px] text-phosphor-dim/50">
                           None
@@ -184,7 +273,7 @@ export function DependencyTable({
               {rows.length === 0 && (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={hasTransitiveDeps ? 7 : 6}
                     className="px-4 py-8 text-center font-mono text-xs text-phosphor-dim/40"
                   >
                     No dependencies match your search.
@@ -198,6 +287,9 @@ export function DependencyTable({
 
       <p className="mt-2 font-mono text-[10px] text-phosphor-dim/40">
         {rows.length} of {parsed.totalCount} dependencies shown
+        {hasTransitiveDeps && depFilter === "all" && (
+          <span> ({parsed.directCount} direct, {parsed.transitiveCount} transitive)</span>
+        )}
       </p>
     </div>
   );

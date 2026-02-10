@@ -1,30 +1,53 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { Upload, FileJson, AlertCircle } from "lucide-react";
+import { Upload, FileJson, AlertCircle, Lock, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-interface FileDropZoneProps {
-  onFileRead: (content: string) => void;
-  disabled?: boolean;
+export interface FileContent {
+  packageJson?: string;
+  lockfile?: string;
 }
 
-export function FileDropZone({ onFileRead, disabled }: FileDropZoneProps) {
+interface FileDropZoneProps {
+  onFileRead: (content: string, filename: string) => void;
+  onFilesRead?: (files: FileContent) => void;
+  disabled?: boolean;
+  acceptLockfile?: boolean;
+}
+
+export function FileDropZone({ 
+  onFileRead, 
+  onFilesRead,
+  disabled,
+  acceptLockfile = true 
+}: FileDropZoneProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [uploadedFiles, setUploadedFiles] = useState<{
+    packageJson: boolean;
+    lockfile: boolean;
+  }>({ packageJson: false, lockfile: false });
   const inputRef = useRef<HTMLInputElement>(null);
+  const pendingFiles = useRef<FileContent>({});
 
-  const handleFile = useCallback(
+  const processFile = useCallback(
     (file: File) => {
-      setError(null);
-
-      if (!file.name.endsWith(".json")) {
-        setError("Please upload a .json file.");
+      const isPackageJson = file.name === "package.json";
+      const isLockfile = file.name === "package-lock.json";
+      
+      if (!isPackageJson && !isLockfile) {
+        setError("Please upload package.json or package-lock.json files.");
         return;
       }
 
-      if (file.size > 1024 * 1024) {
-        setError("File too large. Maximum size is 1MB.");
+      if (isLockfile && !acceptLockfile) {
+        setError("Lockfile support not enabled.");
+        return;
+      }
+
+      if (file.size > 10 * 1024 * 1024) {
+        setError("File too large. Maximum size is 10MB.");
         return;
       }
 
@@ -32,7 +55,21 @@ export function FileDropZone({ onFileRead, disabled }: FileDropZoneProps) {
       reader.onload = (e) => {
         const content = e.target?.result;
         if (typeof content === "string") {
-          onFileRead(content);
+          if (isPackageJson) {
+            pendingFiles.current.packageJson = content;
+            setUploadedFiles(prev => ({ ...prev, packageJson: true }));
+            // For backward compatibility
+            onFileRead(content, file.name);
+          } else if (isLockfile) {
+            pendingFiles.current.lockfile = content;
+            setUploadedFiles(prev => ({ ...prev, lockfile: true }));
+            onFileRead(content, file.name);
+          }
+          
+          // If we have onFilesRead callback and files pending, call it
+          if (onFilesRead && (pendingFiles.current.packageJson || pendingFiles.current.lockfile)) {
+            onFilesRead(pendingFiles.current);
+          }
         }
       };
       reader.onerror = () => {
@@ -40,17 +77,42 @@ export function FileDropZone({ onFileRead, disabled }: FileDropZoneProps) {
       };
       reader.readAsText(file);
     },
-    [onFileRead]
+    [onFileRead, onFilesRead, acceptLockfile]
+  );
+
+  // Single file handler (used by legacy code paths)
+  const _handleFile = useCallback(
+    (file: File) => {
+      setError(null);
+      processFile(file);
+    },
+    [processFile]
+  );
+  void _handleFile; // Available for single-file upload flows
+
+  const handleFiles = useCallback(
+    (files: FileList) => {
+      setError(null);
+      pendingFiles.current = {};
+      setUploadedFiles({ packageJson: false, lockfile: false });
+      
+      for (let i = 0; i < files.length; i++) {
+        processFile(files[i]);
+      }
+    },
+    [processFile]
   );
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
       setIsDragOver(false);
-      const file = e.dataTransfer.files[0];
-      if (file) handleFile(file);
+      const files = e.dataTransfer.files;
+      if (files.length > 0) {
+        handleFiles(files);
+      }
     },
-    [handleFile]
+    [handleFiles]
   );
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -68,8 +130,10 @@ export function FileDropZone({ onFileRead, disabled }: FileDropZoneProps) {
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) handleFile(file);
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      handleFiles(files);
+    }
   };
 
   return (
@@ -115,21 +179,44 @@ export function FileDropZone({ onFileRead, disabled }: FileDropZoneProps) {
           <div className="text-center">
             <p className="font-mono text-sm text-phosphor">
               {isDragOver
-                ? "Drop your file here"
-                : "Drop your package.json here"}
+                ? "Drop your files here"
+                : "Drop package.json here"}
             </p>
             <p className="font-mono text-xs text-phosphor-dim mt-1">
-              or click to browse
+              {acceptLockfile 
+                ? "Optionally include package-lock.json for transitive deps"
+                : "or click to browse"}
             </p>
           </div>
+
+          {/* File status indicators */}
+          {(uploadedFiles.packageJson || uploadedFiles.lockfile) && (
+            <div className="flex items-center gap-4 mt-2">
+              {uploadedFiles.packageJson && (
+                <div className="flex items-center gap-1.5 text-phosphor font-mono text-xs">
+                  <FileJson className="h-3.5 w-3.5" />
+                  <span>package.json</span>
+                  <Check className="h-3.5 w-3.5" />
+                </div>
+              )}
+              {uploadedFiles.lockfile && (
+                <div className="flex items-center gap-1.5 text-phosphor font-mono text-xs">
+                  <Lock className="h-3.5 w-3.5" />
+                  <span>package-lock.json</span>
+                  <Check className="h-3.5 w-3.5" />
+                </div>
+              )}
+            </div>
+          )}
 
           <input
             ref={inputRef}
             type="file"
             accept=".json"
+            multiple={acceptLockfile}
             onChange={handleInputChange}
             className="hidden"
-            aria-label="Upload package.json file"
+            aria-label="Upload package.json and optionally package-lock.json files"
           />
         </button>
       </div>
@@ -139,6 +226,12 @@ export function FileDropZone({ onFileRead, disabled }: FileDropZoneProps) {
           <AlertCircle className="h-4 w-4 shrink-0" />
           <span>{error}</span>
         </div>
+      )}
+
+      {acceptLockfile && (
+        <p className="mt-3 font-mono text-[10px] text-phosphor-dim/40 text-center">
+          Tip: Upload both files together for full transitive dependency analysis
+        </p>
       )}
     </div>
   );

@@ -1,18 +1,21 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Download, Loader2 } from "lucide-react";
+import { ArrowLeft, Download, Loader2, FileJson, Shield, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
 import { useAnalysisStore } from "@/store/analysisStore";
 import { useAnalysis } from "@/hooks/useAnalysis";
 import { ScoreGauge } from "@/components/results/ScoreGauge";
 import { ScoreBreakdown } from "@/components/results/ScoreBreakdown";
 import { DependencyTable } from "@/components/results/DependencyTable";
 import { DependencyGraph } from "@/components/graph/DependencyGraph";
+import { generateCycloneDXSBOM, downloadSBOM } from "@/lib/export/sbomExport";
 
 export default function ResultsPage() {
   const router = useRouter();
   const store = useAnalysisStore();
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [showRemediation, setShowRemediation] = useState(false);
 
   // Kick off analysis
   useAnalysis();
@@ -36,7 +39,7 @@ export default function ResultsPage() {
   const isComplete = store.status === "complete";
   const isError = store.status === "error";
 
-  const handleExport = () => {
+  const handleExportJson = () => {
     if (!store.scores) return;
     const report = {
       timestamp: new Date().toISOString(),
@@ -55,13 +58,36 @@ export default function ResultsPage() {
     a.download = `depsec-report-${store.parsedPackage?.name || "analysis"}.json`;
     a.click();
     URL.revokeObjectURL(url);
+    setShowExportMenu(false);
   };
+
+  const handleExportSbom = () => {
+    if (!store.parsedPackage) return;
+    const sbom = generateCycloneDXSBOM(
+      store.parsedPackage,
+      store.vulnerabilities,
+      store.packageMetadata
+    );
+    downloadSBOM(sbom);
+    setShowExportMenu(false);
+  };
+
+  // Get vulnerabilities with remediation hints
+  const vulnsWithRemediation = Object.entries(store.vulnerabilities)
+    .flatMap(([pkgName, vulns]) => 
+      vulns
+        .filter(v => v.fixedVersion || v.remediation?.fixedVersion)
+        .map(v => ({
+          package: pkgName,
+          ...v,
+        }))
+    );
 
   return (
     <div className="min-h-[calc(100vh-3.5rem)] px-6 py-8">
       <div className="mx-auto max-w-6xl">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
           <div className="flex items-center gap-4">
             <button
               type="button"
@@ -81,7 +107,11 @@ export default function ResultsPage() {
                 <p className="font-mono text-xs text-phosphor-dim mt-0.5">
                   {store.parsedPackage.name}{" "}
                   <span className="text-phosphor-dim/40">
-                    ({store.parsedPackage.totalCount} dependencies)
+                    ({store.parsedPackage.totalCount} dependencies
+                    {store.parsedPackage.hasLockfile && (
+                      <> • {store.parsedPackage.directCount} direct, {store.parsedPackage.transitiveCount} transitive</>
+                    )}
+                    )
                   </span>
                 </p>
               )}
@@ -89,14 +119,42 @@ export default function ResultsPage() {
           </div>
 
           {isComplete && (
-            <button
-              type="button"
-              onClick={handleExport}
-              className="flex items-center gap-2 px-4 py-2 border border-phosphor-dim/30 font-mono text-xs text-phosphor-dim hover:text-phosphor hover:border-phosphor/30 transition-colors"
-            >
-              <Download className="h-3.5 w-3.5" />
-              Export JSON
-            </button>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowExportMenu(!showExportMenu)}
+                className="flex items-center gap-2 px-4 py-2 border border-phosphor-dim/30 font-mono text-xs text-phosphor-dim hover:text-phosphor hover:border-phosphor/30 transition-colors"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Export
+                {showExportMenu ? (
+                  <ChevronUp className="h-3 w-3" />
+                ) : (
+                  <ChevronDown className="h-3 w-3" />
+                )}
+              </button>
+              
+              {showExportMenu && (
+                <div className="absolute right-0 mt-1 w-48 bg-black border border-phosphor-dim/30 shadow-lg z-10">
+                  <button
+                    type="button"
+                    onClick={handleExportJson}
+                    className="w-full flex items-center gap-2 px-4 py-2 font-mono text-xs text-phosphor-dim hover:text-phosphor hover:bg-phosphor/5 transition-colors text-left"
+                  >
+                    <FileJson className="h-3.5 w-3.5" />
+                    Export JSON Report
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExportSbom}
+                    className="w-full flex items-center gap-2 px-4 py-2 font-mono text-xs text-phosphor-dim hover:text-phosphor hover:bg-phosphor/5 transition-colors text-left border-t border-phosphor-dim/10"
+                  >
+                    <Shield className="h-3.5 w-3.5" />
+                    Export SBOM (CycloneDX)
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
@@ -157,6 +215,59 @@ export default function ResultsPage() {
                 grade={store.scores.grade}
               />
             </div>
+
+            {/* Remediation Hints (if any) */}
+            {vulnsWithRemediation.length > 0 && (
+              <section>
+                <button
+                  type="button"
+                  onClick={() => setShowRemediation(!showRemediation)}
+                  className="w-full flex items-center justify-between font-display text-sm font-bold tracking-[2px] uppercase text-warning mb-4"
+                >
+                  <span className="flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4" />
+                    Remediation Available ({vulnsWithRemediation.length} vulnerabilities)
+                  </span>
+                  {showRemediation ? (
+                    <ChevronUp className="h-4 w-4" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4" />
+                  )}
+                </button>
+                
+                {showRemediation && (
+                  <div className="border border-warning/20 bg-warning/5 p-4 space-y-3">
+                    {vulnsWithRemediation.slice(0, 10).map((v, i) => (
+                      <div key={`${v.package}-${v.id}-${i}`} className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2">
+                          <span className={`font-mono text-[10px] uppercase px-1.5 py-0.5 border ${
+                            v.severity === "CRITICAL" ? "text-danger border-danger/30" :
+                            v.severity === "HIGH" ? "text-warning border-warning/30" :
+                            "text-phosphor-dim border-phosphor-dim/30"
+                          }`}>
+                            {v.severity}
+                          </span>
+                          <span className="font-mono text-xs text-phosphor">
+                            {v.package}
+                          </span>
+                          <span className="font-mono text-[10px] text-phosphor-dim">
+                            {v.id}
+                          </span>
+                        </div>
+                        <p className="font-mono text-xs text-phosphor-dim/80 pl-4">
+                          → Upgrade to <span className="text-phosphor">{v.fixedVersion || v.remediation?.fixedVersion}</span> to fix
+                        </p>
+                      </div>
+                    ))}
+                    {vulnsWithRemediation.length > 10 && (
+                      <p className="font-mono text-[10px] text-phosphor-dim/40 pt-2">
+                        ...and {vulnsWithRemediation.length - 10} more
+                      </p>
+                    )}
+                  </div>
+                )}
+              </section>
+            )}
 
             {/* Category breakdown */}
             <section>
