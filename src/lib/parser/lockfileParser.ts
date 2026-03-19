@@ -36,8 +36,8 @@ const lockfilePackageSchema = z.object({
   resolved: z.string().optional(),
   integrity: z.string().optional(),
   dev: z.boolean().optional(),
-  dependencies: z.record(z.string()).optional(),
-  requires: z.record(z.string()).optional(),
+  dependencies: z.record(z.string(), z.string()).optional(),
+  requires: z.record(z.string(), z.string()).optional(),
   optional: z.boolean().optional(),
   peer: z.boolean().optional(),
 });
@@ -46,7 +46,7 @@ const lockfileSchemaV2V3 = z.object({
   name: z.string().optional(),
   version: z.string().optional(),
   lockfileVersion: z.number(),
-  packages: z.record(lockfilePackageSchema).optional(),
+  packages: z.record(z.string(), lockfilePackageSchema).optional(),
 });
 
 // Schema for package-lock.json v1 (legacy)
@@ -54,13 +54,13 @@ const lockfileSchemaV1 = z.object({
   name: z.string().optional(),
   version: z.string().optional(),
   lockfileVersion: z.number().optional(),
-  dependencies: z.record(z.object({
+  dependencies: z.record(z.string(), z.object({
     version: z.string(),
     resolved: z.string().optional(),
     integrity: z.string().optional(),
     dev: z.boolean().optional(),
-    requires: z.record(z.string()).optional(),
-    dependencies: z.record(z.unknown()).optional(),
+    requires: z.record(z.string(), z.string()).optional(),
+    dependencies: z.record(z.string(), z.unknown()).optional(),
   })).optional(),
 });
 

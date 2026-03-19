@@ -4,8 +4,8 @@ import type { Dependency, ParsedPackageJson } from "./types";
 const packageJsonSchema = z.object({
   name: z.string().optional(),
   version: z.string().optional(),
-  dependencies: z.record(z.string()).optional(),
-  devDependencies: z.record(z.string()).optional(),
+  dependencies: z.record(z.string(), z.string()).optional(),
+  devDependencies: z.record(z.string(), z.string()).optional(),
 });
 
 export function parsePackageJson(raw: string): ParsedPackageJson {
