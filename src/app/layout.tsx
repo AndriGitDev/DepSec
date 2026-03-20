@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Orbitron, Share_Tech_Mono } from "next/font/google";
+import Script from "next/script";
 import { Header } from "@/components/layout/Header";
 import { ScanlineOverlay } from "@/components/layout/ScanlineOverlay";
 import "./globals.css";
@@ -48,6 +49,23 @@ export default function RootLayout({
         <ScanlineOverlay />
         <Header />
         <main className="pt-14">{children}</main>
+        <Script src="https://swetrix.org/swetrix.js" strategy="afterInteractive" />
+        <Script id="swetrix-init" strategy="afterInteractive">
+          {`
+            swetrix.init('NTjzOAzBYjDt', {
+              apiURL: 'https://swetrixapi.kindra.is/log',
+            })
+            swetrix.trackViews()
+          `}
+        </Script>
+        <noscript>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="https://swetrixapi.kindra.is/log/noscript?pid=NTjzOAzBYjDt"
+            alt=""
+            referrerPolicy="no-referrer-when-downgrade"
+          />
+        </noscript>
       </body>
     </html>
   );
