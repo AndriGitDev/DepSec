@@ -115,7 +115,7 @@ export function DependencyTable({
     }
   };
 
-  const SortHeader = ({ label, sortKeyVal }: { label: string; sortKeyVal: SortKey }) => (
+  const renderSortHeader = (label: string, sortKeyVal: SortKey) => (
     <button
       type="button"
       onClick={() => toggleSort(sortKeyVal)}
@@ -175,7 +175,7 @@ export function DependencyTable({
             <thead>
               <tr className="border-b border-phosphor-dim/20 bg-secondary/50">
                 <th className="px-4 py-2.5 text-left">
-                  <SortHeader label="Package" sortKeyVal="name" />
+                  {renderSortHeader("Package", "name")}
                 </th>
                 <th className="px-4 py-2.5 text-left">
                   <span className="font-mono text-xs uppercase tracking-wider text-phosphor-dim">
@@ -183,21 +183,21 @@ export function DependencyTable({
                   </span>
                 </th>
                 <th className="px-4 py-2.5 text-left">
-                  <SortHeader label="Type" sortKeyVal="type" />
+                  {renderSortHeader("Type", "type")}
                 </th>
                 {hasTransitiveDeps && (
                   <th className="px-4 py-2.5 text-left">
-                    <SortHeader label="Depth" sortKeyVal="depth" />
+                    {renderSortHeader("Depth", "depth")}
                   </th>
                 )}
                 <th className="px-4 py-2.5 text-left">
-                  <SortHeader label="Vulns" sortKeyVal="vulns" />
+                  {renderSortHeader("Vulns", "vulns")}
                 </th>
                 <th className="px-4 py-2.5 text-left">
-                  <SortHeader label="License" sortKeyVal="license" />
+                  {renderSortHeader("License", "license")}
                 </th>
                 <th className="px-4 py-2.5 text-right">
-                  <SortHeader label="Downloads" sortKeyVal="downloads" />
+                  {renderSortHeader("Downloads", "downloads")}
                 </th>
               </tr>
             </thead>
