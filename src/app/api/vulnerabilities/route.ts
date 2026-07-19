@@ -5,10 +5,10 @@ import { checkRateLimit, getClientIp } from "@/lib/utils/rateLimiter";
 const requestSchema = z.object({
   packages: z.array(
     z.object({
-      name: z.string(),
-      version: z.string(),
+      name: z.string().trim().min(1).max(214),
+      version: z.string().trim().min(1).max(128),
     })
-  ),
+  ).min(1).max(200),
 });
 
 interface OsvAffectedRange {

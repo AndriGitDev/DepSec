@@ -3,7 +3,7 @@ import { z } from "zod";
 import { checkRateLimit, getClientIp } from "@/lib/utils/rateLimiter";
 
 const requestSchema = z.object({
-  packages: z.array(z.string()),
+  packages: z.array(z.string().trim().min(1).max(214)).min(1).max(200),
 });
 
 export async function POST(request: Request) {

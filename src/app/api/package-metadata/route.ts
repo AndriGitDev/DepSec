@@ -3,7 +3,7 @@ import { z } from "zod";
 import { checkRateLimit, getClientIp } from "@/lib/utils/rateLimiter";
 
 const requestSchema = z.object({
-  packages: z.array(z.string()),
+  packages: z.array(z.string().trim().min(1).max(214)).min(1).max(200),
 });
 
 interface NpmPackument {
@@ -17,6 +17,7 @@ interface NpmPackument {
 
 const cache = new Map<string, { data: NpmPackument; expiry: number }>();
 const CACHE_TTL = 5 * 60 * 1000;
+const MAX_CACHE_ENTRIES = 5_000;
 
 async function fetchPackageMetadata(name: string): Promise<NpmPackument | null> {
   const cached = cache.get(name);
@@ -37,6 +38,12 @@ async function fetchPackageMetadata(name: string): Promise<NpmPackument | null> 
     if (!res.ok) return null;
 
     const data: NpmPackument = await res.json();
+    if (cache.size >= MAX_CACHE_ENTRIES) {
+      for (const [key, value] of cache) {
+        if (Date.now() >= value.expiry) cache.delete(key);
+      }
+      if (cache.size >= MAX_CACHE_ENTRIES) cache.delete(cache.keys().next().value!);
+    }
     cache.set(name, { data, expiry: Date.now() + CACHE_TTL });
     return data;
   } catch {
