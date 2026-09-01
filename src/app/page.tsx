@@ -13,7 +13,7 @@ import {
   Play,
   FileJson,
   Wrench,
-  Github,
+  Workflow,
 } from "lucide-react";
 import { FileDropZone } from "@/components/upload/FileDropZone";
 import { SampleLoader } from "@/components/upload/SampleLoader";
@@ -30,7 +30,7 @@ const features = [
   { label: "CI/CD Mode", icon: Play },
   { label: "SBOM Export", icon: FileJson },
   { label: "Fix Suggestions", icon: Wrench },
-  { label: "GitHub Action", icon: Github },
+  { label: "GitHub Action", icon: Workflow },
 ];
 
 export default function Home() {
